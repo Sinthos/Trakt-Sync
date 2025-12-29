@@ -7,6 +7,8 @@ SERVICE_PATH="${SERVICE_PATH:-/etc/systemd/system/trakt-sync.service}"
 TRAKT_SYNC_INTERVAL="${TRAKT_SYNC_INTERVAL:-6h}"
 SKIP_DEPS="${SKIP_DEPS:-0}"
 REPO_URL="${REPO_URL:-https://github.com/Sinthos/trakt-sync.git}"
+ROOT_CONFIG="${ROOT_CONFIG:-0}"
+ROOT_CONFIG_PATH="${ROOT_CONFIG_PATH:-/root/.config/trakt-sync/config.yaml}"
 
 TRAKT_CLIENT_ID="${TRAKT_CLIENT_ID:-}"
 TRAKT_CLIENT_SECRET="${TRAKT_CLIENT_SECRET:-}"
@@ -146,6 +148,14 @@ fi
 chown -R "$APP_USER":"$APP_USER" "${USER_HOME}/.config"
 chmod 600 "$CONFIG_PATH"
 
+if [ "$ROOT_CONFIG" = "1" ]; then
+  ROOT_CONFIG_DIR="$(dirname "$ROOT_CONFIG_PATH")"
+  mkdir -p "$ROOT_CONFIG_DIR"
+  cp "$CONFIG_PATH" "$ROOT_CONFIG_PATH"
+  chown root:root "$ROOT_CONFIG_PATH"
+  chmod 600 "$ROOT_CONFIG_PATH"
+fi
+
 if command -v systemctl >/dev/null 2>&1; then
   HAS_SYSTEMD=1
   "$BIN_PATH" install-service --user "$APP_USER" --interval "$TRAKT_SYNC_INTERVAL" --path "$SERVICE_PATH"
@@ -157,6 +167,15 @@ Installation complete.
 Config: ${CONFIG_PATH}
 Binary: ${BIN_PATH}
 Service file: ${SERVICE_PATH}
+EOF_OUTPUT
+
+if [ "$ROOT_CONFIG" = "1" ]; then
+  cat << EOF_OUTPUT
+Root config: ${ROOT_CONFIG_PATH}
+EOF_OUTPUT
+fi
+
+cat << EOF_OUTPUT
 
 Next steps:
 1) Authenticate:
