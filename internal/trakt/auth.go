@@ -3,6 +3,7 @@ package trakt
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -56,6 +57,11 @@ func (c *Client) PollForToken(deviceCode string, interval int, expiresIn int) (*
 						return nil, fmt.Errorf("user denied authorization")
 					case "expired_token":
 						return nil, fmt.Errorf("device code expired")
+					}
+
+					if apiErr.Code == "" && apiErr.Status == http.StatusBadRequest {
+						log.Debug().Str("detail", apiErr.Description).Msg("Device code not authorized yet")
+						continue
 					}
 				}
 				return nil, err
