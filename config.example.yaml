@@ -1,0 +1,35 @@
+trakt:
+  # Get these from https://trakt.tv/oauth/applications
+  client_id: "your-client-id-here"
+  client_secret: "your-client-secret-here"
+
+  # Your Trakt.tv username
+  username: "your-username"
+
+  # These will be filled automatically by 'trakt-sync auth'
+  access_token: ""
+  refresh_token: ""
+  token_expires_at: ""
+
+sync:
+  # Number of items per list
+  limit: 20
+
+  # List privacy: private, friends, public
+  list_privacy: "private"
+
+  # Which lists to synchronize
+  lists:
+    trending_movies: true
+    trending_shows: true
+    popular_movies: true
+    popular_shows: true
+    streaming_movies: true
+    streaming_shows: true
+
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+
+  # Log format: text, json
+  format: "text"
