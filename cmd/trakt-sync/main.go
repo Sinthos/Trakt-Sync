@@ -37,8 +37,8 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "trakt-sync",
-	Short: "Sync Trakt.tv lists with trending and popular content",
-	Long:  "A tool to automatically synchronize Trakt.tv lists with top trending, popular, and most watched movies and shows.",
+	Short: "Sync Trakt.tv lists with trending and streaming charts",
+	Long:  "A tool to automatically synchronize Trakt.tv lists with top trending and most watched movies and shows.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		setupLogging()
 
@@ -149,7 +149,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "show what would happen without making changes")
 
-	syncCmd.Flags().String("lists", "", "comma-separated list of lists to sync (e.g., trending-movies,popular-shows)")
+	syncCmd.Flags().String("lists", "", "comma-separated list slugs to sync (e.g., trakt-sync-filme,trakt-sync-serien)")
 
 	daemonCmd.Flags().Duration("interval", 6*time.Hour, "sync interval")
 
@@ -287,18 +287,10 @@ func runSync(listsFilter string) (syncpkg.SyncResult, error) {
 		for _, listSlug := range requestedLists {
 			listSlug = strings.TrimSpace(listSlug)
 			switch listSlug {
-			case "trending-movies":
-				cfg.Sync.Lists.TrendingMovies = true
-			case "trending-shows":
-				cfg.Sync.Lists.TrendingShows = true
-			case "popular-movies":
-				cfg.Sync.Lists.PopularMovies = true
-			case "popular-shows":
-				cfg.Sync.Lists.PopularShows = true
-			case "streaming-charts-movies":
-				cfg.Sync.Lists.StreamingMovies = true
-			case "streaming-charts-shows":
-				cfg.Sync.Lists.StreamingShows = true
+			case "trakt-sync-filme":
+				cfg.Sync.Lists.Movies = true
+			case "trakt-sync-serien":
+				cfg.Sync.Lists.Shows = true
 			default:
 				log.Warn().Str("list", listSlug).Msg("Unknown list slug")
 			}
@@ -321,7 +313,20 @@ func runSync(listsFilter string) (syncpkg.SyncResult, error) {
 		return result, nil
 	}
 
-	return syncer.SyncAll()
+	result, err := syncer.SyncAll()
+
+	if !dryRun && syncer.ConfigDirty() {
+		configPath := cfgFile
+		if configPath == "" {
+			configPath = config.DefaultConfigPath()
+		}
+
+		if saveErr := config.Save(cfg, configPath); saveErr != nil {
+			log.Error().Err(saveErr).Msg("Failed to save sync state")
+		}
+	}
+
+	return result, err
 }
 
 func runDaemon(interval time.Duration) error {
@@ -369,27 +374,16 @@ func runStatus() {
 	}
 
 	fmt.Println("\nEnabled Lists:")
-	if cfg.Sync.Lists.TrendingMovies {
-		fmt.Println("  - trending-movies")
+	if cfg.Sync.Lists.Movies {
+		fmt.Println("  - trakt-sync-filme")
 	}
-	if cfg.Sync.Lists.TrendingShows {
-		fmt.Println("  - trending-shows")
-	}
-	if cfg.Sync.Lists.PopularMovies {
-		fmt.Println("  - popular-movies")
-	}
-	if cfg.Sync.Lists.PopularShows {
-		fmt.Println("  - popular-shows")
-	}
-	if cfg.Sync.Lists.StreamingMovies {
-		fmt.Println("  - streaming-charts-movies")
-	}
-	if cfg.Sync.Lists.StreamingShows {
-		fmt.Println("  - streaming-charts-shows")
+	if cfg.Sync.Lists.Shows {
+		fmt.Println("  - trakt-sync-serien")
 	}
 
-	fmt.Printf("\nSync limit: %d items per list\n", cfg.Sync.Limit)
+	fmt.Printf("\nSync limit: %d items per source\n", cfg.Sync.Limit)
 	fmt.Printf("List privacy: %s\n", cfg.Sync.ListPrivacy)
+	fmt.Printf("Full refresh: every %d days\n", cfg.Sync.FullRefreshDays)
 }
 
 func runInstallService(path, user string, interval time.Duration) error {

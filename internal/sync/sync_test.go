@@ -4,7 +4,9 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 
+	"github.com/maximilian/trakt-sync/internal/config"
 	"github.com/maximilian/trakt-sync/internal/trakt"
 )
 
@@ -33,6 +35,35 @@ func TestCalculateDiffShows(t *testing.T) {
 
 	assertIDs(t, toAdd, []int{})
 	assertIDs(t, toRemove, []int{10})
+}
+
+func TestUniqueIDs(t *testing.T) {
+	items := []trakt.MediaIDs{{Trakt: 1}, {Trakt: 2}, {Trakt: 1}}
+	unique := uniqueIDs(items)
+	assertIDs(t, unique, []int{1, 2})
+}
+
+func TestShouldFullRefresh(t *testing.T) {
+	now := time.Now()
+	cfg := &config.Config{
+		Sync: config.SyncConfig{
+			FullRefreshDays: 7,
+			LastFullRefresh: config.FullRefreshState{
+				Movies: now.Add(-8 * 24 * time.Hour),
+				Shows:  now.Add(-5 * 24 * time.Hour),
+			},
+		},
+	}
+
+	syncer := &Syncer{config: cfg}
+
+	if !syncer.shouldFullRefresh(true) {
+		t.Fatal("expected movies to require full refresh")
+	}
+
+	if syncer.shouldFullRefresh(false) {
+		t.Fatal("did not expect shows to require full refresh")
+	}
 }
 
 func assertIDs(t *testing.T, got []trakt.MediaIDs, want []int) {

@@ -12,20 +12,24 @@ trakt:
   token_expires_at: ""
 
 sync:
-  # Number of items per list
+  # Number of items per source (trending + streaming charts)
   limit: 20
 
   # List privacy: private, friends, public
   list_privacy: "private"
 
+  # Full refresh cadence in days (lists are cleared and refilled)
+  full_refresh_days: 7
+
+  # When the last full refresh ran (RFC3339 timestamps)
+  last_full_refresh:
+    movies: ""
+    shows: ""
+
   # Which lists to synchronize
   lists:
-    trending_movies: true
-    trending_shows: true
-    popular_movies: true
-    popular_shows: true
-    streaming_movies: true
-    streaming_shows: true
+    movies: true
+    shows: true
 
 logging:
   # Log level: debug, info, warn, error

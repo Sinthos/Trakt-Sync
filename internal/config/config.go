@@ -31,19 +31,23 @@ type TraktConfig struct {
 
 // SyncConfig defines sync behavior
 type SyncConfig struct {
-	Limit       int            `mapstructure:"limit"`
-	ListPrivacy string         `mapstructure:"list_privacy"`
-	Lists       ListSyncConfig `mapstructure:"lists"`
+	Limit           int              `mapstructure:"limit"`
+	ListPrivacy     string           `mapstructure:"list_privacy"`
+	FullRefreshDays int              `mapstructure:"full_refresh_days"`
+	LastFullRefresh FullRefreshState `mapstructure:"last_full_refresh"`
+	Lists           ListSyncConfig   `mapstructure:"lists"`
+}
+
+// FullRefreshState keeps track of weekly full refresh timestamps.
+type FullRefreshState struct {
+	Movies time.Time `mapstructure:"movies"`
+	Shows  time.Time `mapstructure:"shows"`
 }
 
 // ListSyncConfig defines which lists to sync
 type ListSyncConfig struct {
-	TrendingMovies  bool `mapstructure:"trending_movies"`
-	TrendingShows   bool `mapstructure:"trending_shows"`
-	PopularMovies   bool `mapstructure:"popular_movies"`
-	PopularShows    bool `mapstructure:"popular_shows"`
-	StreamingMovies bool `mapstructure:"streaming_movies"`
-	StreamingShows  bool `mapstructure:"streaming_shows"`
+	Movies bool `mapstructure:"movies"`
+	Shows  bool `mapstructure:"shows"`
 }
 
 // LoggingConfig defines logging behavior
@@ -133,12 +137,11 @@ func Save(cfg *Config, configPath string) error {
 
 	v.Set("sync.limit", cfg.Sync.Limit)
 	v.Set("sync.list_privacy", privacy)
-	v.Set("sync.lists.trending_movies", cfg.Sync.Lists.TrendingMovies)
-	v.Set("sync.lists.trending_shows", cfg.Sync.Lists.TrendingShows)
-	v.Set("sync.lists.popular_movies", cfg.Sync.Lists.PopularMovies)
-	v.Set("sync.lists.popular_shows", cfg.Sync.Lists.PopularShows)
-	v.Set("sync.lists.streaming_movies", cfg.Sync.Lists.StreamingMovies)
-	v.Set("sync.lists.streaming_shows", cfg.Sync.Lists.StreamingShows)
+	v.Set("sync.full_refresh_days", cfg.Sync.FullRefreshDays)
+	v.Set("sync.last_full_refresh.movies", formatTimeOrEmpty(cfg.Sync.LastFullRefresh.Movies))
+	v.Set("sync.last_full_refresh.shows", formatTimeOrEmpty(cfg.Sync.LastFullRefresh.Shows))
+	v.Set("sync.lists.movies", cfg.Sync.Lists.Movies)
+	v.Set("sync.lists.shows", cfg.Sync.Lists.Shows)
 
 	v.Set("logging.level", cfg.Logging.Level)
 	v.Set("logging.format", cfg.Logging.Format)
@@ -163,6 +166,9 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Sync.ListPrivacy) == "" {
 		return fmt.Errorf("sync.list_privacy is required")
 	}
+	if c.Sync.FullRefreshDays <= 0 {
+		return fmt.Errorf("sync.full_refresh_days must be greater than 0")
+	}
 	return nil
 }
 
@@ -182,12 +188,9 @@ func (c *Config) NeedsRefresh() bool {
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("sync.limit", 20)
 	v.SetDefault("sync.list_privacy", "private")
-	v.SetDefault("sync.lists.trending_movies", true)
-	v.SetDefault("sync.lists.trending_shows", true)
-	v.SetDefault("sync.lists.popular_movies", true)
-	v.SetDefault("sync.lists.popular_shows", true)
-	v.SetDefault("sync.lists.streaming_movies", true)
-	v.SetDefault("sync.lists.streaming_shows", true)
+	v.SetDefault("sync.full_refresh_days", 7)
+	v.SetDefault("sync.lists.movies", true)
+	v.SetDefault("sync.lists.shows", true)
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "text")
 }
@@ -201,15 +204,12 @@ func defaultConfig() *Config {
 	return &Config{
 		Trakt: TraktConfig{},
 		Sync: SyncConfig{
-			Limit:       20,
-			ListPrivacy: "private",
+			Limit:           20,
+			ListPrivacy:     "private",
+			FullRefreshDays: 7,
 			Lists: ListSyncConfig{
-				TrendingMovies:  true,
-				TrendingShows:   true,
-				PopularMovies:   true,
-				PopularShows:    true,
-				StreamingMovies: true,
-				StreamingShows:  true,
+				Movies: true,
+				Shows:  true,
 			},
 		},
 		Logging: LoggingConfig{
@@ -217,6 +217,13 @@ func defaultConfig() *Config {
 			Format: "text",
 		},
 	}
+}
+
+func formatTimeOrEmpty(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func stringToTimeHook() mapstructure.DecodeHookFunc {

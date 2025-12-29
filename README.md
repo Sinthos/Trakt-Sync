@@ -1,29 +1,25 @@
 # Trakt Sync
 
-A Go-based tool to automatically synchronize Trakt.tv lists with trending, popular, and most-watched movies and shows.
+A Go-based tool to automatically synchronize Trakt.tv lists with trending and streaming charts for movies and shows.
 
 ## Features
 
 - **OAuth2 Authentication** - Secure device code flow authentication with automatic token refresh
-- **6 Auto-Synced Lists** - Tracks trending, popular, and streaming charts for both movies and shows
+- **2 Auto-Synced Lists** - Combines trending and streaming charts for movies and shows
 - **Daemon Mode** - Run continuously with configurable sync intervals
-- **Smart Diffing** - Only adds/removes items that have changed
+- **Smart Diffing + Weekly Full Refresh** - Only adds/removes items that have changed; lists are fully refreshed weekly
 - **Rate Limiting** - Respects Trakt API limits with automatic backoff
 - **Cross-Platform** - Builds for Linux (AMD64, ARM64) and other platforms
 - **Lightweight** - Single binary with minimal resource usage
 
 ## Synced Lists
 
-The tool maintains these 6 lists on your Trakt.tv account:
+The tool maintains these 2 lists on your Trakt.tv account:
 
-| List Slug | Description | Source API |
-|-----------|-------------|------------|
-| `trending-movies` | Top 20 trending movies | `/movies/trending` |
-| `trending-shows` | Top 20 trending shows | `/shows/trending` |
-| `popular-movies` | Top 20 popular movies | `/movies/popular` |
-| `popular-shows` | Top 20 popular shows | `/shows/popular` |
-| `streaming-charts-movies` | Top 20 most watched movies (weekly) | `/movies/watched/weekly` |
-| `streaming-charts-shows` | Top 20 most watched shows (weekly) | `/shows/watched/weekly` |
+| List Slug | Description | Source APIs |
+|-----------|-------------|-------------|
+| `trakt-sync-filme` | Top 20 trending + Top 20 streaming charts movies | `/movies/trending`, `/movies/watched/weekly` |
+| `trakt-sync-serien` | Top 20 trending + Top 20 streaming charts shows | `/shows/trending`, `/shows/watched/weekly` |
 
 ## Installation
 
@@ -77,16 +73,17 @@ The binary will be in the `bin/` directory.
 
 3. Get API credentials from https://trakt.tv/oauth/applications:
    - Click "New Application"
-   - Fill in the details (Redirect URI can be `urn:ietf:wg:oauth:2.0:oob`)
+   - Fill in the details (Redirect URI can be `urn:ietf:wg:oauth:2.0:oob`, device flow does not use it)
    - Copy the Client ID and Client Secret
 
 ### Configuration Options
 
 See `config.example.yaml` for all available options:
 
-- **sync.limit** - Number of items per list (default: 20)
+- **sync.limit** - Number of items per source (default: 20)
 - **sync.list_privacy** - Privacy for auto-created lists (default: private)
-- **sync.lists** - Enable/disable specific lists
+- **sync.full_refresh_days** - Full refresh cadence in days (default: 7)
+- **sync.lists** - Enable/disable movies/shows lists
 - **logging.level** - Log level: debug, info, warn, error (default: info)
 - **logging.format** - Log format: text or json (default: text)
 
@@ -116,7 +113,7 @@ trakt-sync sync
 Sync only specific lists:
 
 ```bash
-trakt-sync sync --lists trending-movies,popular-shows
+trakt-sync sync --lists trakt-sync-filme
 ```
 
 ### Daemon Mode

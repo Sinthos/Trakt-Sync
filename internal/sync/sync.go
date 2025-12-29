@@ -19,6 +19,7 @@ type ListDefinition struct {
 	Description string
 	Enabled     bool
 	FetchFunc   func(*trakt.Client, int) ([]trakt.MediaIDs, error)
+	IsMovie     bool
 }
 
 // SyncResult captures the summary of a sync run
@@ -31,8 +32,9 @@ type SyncResult struct {
 
 // Syncer handles syncing lists
 type Syncer struct {
-	client *trakt.Client
-	config *config.Config
+	client      *trakt.Client
+	config      *config.Config
+	configDirty bool
 }
 
 // NewSyncer creates a new syncer
@@ -43,50 +45,29 @@ func NewSyncer(client *trakt.Client, cfg *config.Config) *Syncer {
 	}
 }
 
+// ConfigDirty reports whether sync updated persisted config values.
+func (s *Syncer) ConfigDirty() bool {
+	return s.configDirty
+}
+
 // GetListDefinitions returns all list definitions based on config
 func (s *Syncer) GetListDefinitions() []ListDefinition {
 	return []ListDefinition{
 		{
-			Slug:        "trending-movies",
-			Name:        "Trending Movies",
-			Description: "Top 20 trending movies on Trakt",
-			Enabled:     s.config.Sync.Lists.TrendingMovies,
-			FetchFunc:   s.fetchTrendingMovies,
+			Slug:        "trakt-sync-filme",
+			Name:        "Trakt Sync Filme",
+			Description: "Top 20 trending and top 20 streaming charts movies",
+			Enabled:     s.config.Sync.Lists.Movies,
+			FetchFunc:   s.fetchCombinedMovies,
+			IsMovie:     true,
 		},
 		{
-			Slug:        "trending-shows",
-			Name:        "Trending Shows",
-			Description: "Top 20 trending shows on Trakt",
-			Enabled:     s.config.Sync.Lists.TrendingShows,
-			FetchFunc:   s.fetchTrendingShows,
-		},
-		{
-			Slug:        "popular-movies",
-			Name:        "Popular Movies",
-			Description: "Top 20 popular movies on Trakt",
-			Enabled:     s.config.Sync.Lists.PopularMovies,
-			FetchFunc:   s.fetchPopularMovies,
-		},
-		{
-			Slug:        "popular-shows",
-			Name:        "Popular Shows",
-			Description: "Top 20 popular shows on Trakt",
-			Enabled:     s.config.Sync.Lists.PopularShows,
-			FetchFunc:   s.fetchPopularShows,
-		},
-		{
-			Slug:        "streaming-charts-movies",
-			Name:        "Streaming Charts Movies",
-			Description: "Top 20 most watched movies this week",
-			Enabled:     s.config.Sync.Lists.StreamingMovies,
-			FetchFunc:   s.fetchStreamingMovies,
-		},
-		{
-			Slug:        "streaming-charts-shows",
-			Name:        "Streaming Charts Shows",
-			Description: "Top 20 most watched shows this week",
-			Enabled:     s.config.Sync.Lists.StreamingShows,
-			FetchFunc:   s.fetchStreamingShows,
+			Slug:        "trakt-sync-serien",
+			Name:        "Trakt Sync Serien",
+			Description: "Top 20 trending and top 20 streaming charts shows",
+			Enabled:     s.config.Sync.Lists.Shows,
+			FetchFunc:   s.fetchCombinedShows,
+			IsMovie:     false,
 		},
 	}
 }
@@ -158,6 +139,7 @@ func (s *Syncer) SyncList(listDef ListDefinition) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch items: %w", err)
 	}
+	newItems = uniqueIDs(newItems)
 
 	log.Info().Str("list", listDef.Slug).Int("count", len(newItems)).Msg("Fetched items from API")
 
@@ -166,16 +148,44 @@ func (s *Syncer) SyncList(listDef ListDefinition) error {
 		return fmt.Errorf("failed to get current list items: %w", err)
 	}
 
+	if s.shouldFullRefresh(listDef.IsMovie) {
+		toRemove := listItemIDs(currentItems)
+		if len(toRemove) > 0 {
+			if err := s.removeItems(listDef.Slug, toRemove, listDef.IsMovie); err != nil {
+				return fmt.Errorf("failed to remove items: %w", err)
+			}
+		}
+
+		if len(newItems) > 0 {
+			if err := s.addItems(listDef.Slug, newItems, listDef.IsMovie); err != nil {
+				return fmt.Errorf("failed to add items: %w", err)
+			}
+		}
+
+		s.markFullRefresh(listDef.IsMovie)
+
+		duration := time.Since(startTime)
+		log.Info().
+			Str("list", listDef.Slug).
+			Bool("full_refresh", true).
+			Int("added", len(newItems)).
+			Int("removed", len(toRemove)).
+			Int("unchanged", 0).
+			Dur("duration", duration).
+			Msg("List sync complete")
+		return nil
+	}
+
 	toAdd, toRemove := s.calculateDiff(currentItems, newItems)
 
 	if len(toRemove) > 0 {
-		if err := s.removeItems(listDef.Slug, toRemove); err != nil {
+		if err := s.removeItems(listDef.Slug, toRemove, listDef.IsMovie); err != nil {
 			return fmt.Errorf("failed to remove items: %w", err)
 		}
 	}
 
 	if len(toAdd) > 0 {
-		if err := s.addItems(listDef.Slug, toAdd); err != nil {
+		if err := s.addItems(listDef.Slug, toAdd, listDef.IsMovie); err != nil {
 			return fmt.Errorf("failed to add items: %w", err)
 		}
 	}
@@ -192,6 +202,37 @@ func (s *Syncer) SyncList(listDef ListDefinition) error {
 		Msg("List sync complete")
 
 	return nil
+}
+
+func (s *Syncer) shouldFullRefresh(isMovie bool) bool {
+	days := s.config.Sync.FullRefreshDays
+	if days <= 0 {
+		days = 7
+	}
+
+	last := s.lastFullRefresh(isMovie)
+	if last.IsZero() {
+		return true
+	}
+
+	return time.Since(last) >= time.Duration(days)*24*time.Hour
+}
+
+func (s *Syncer) lastFullRefresh(isMovie bool) time.Time {
+	if isMovie {
+		return s.config.Sync.LastFullRefresh.Movies
+	}
+	return s.config.Sync.LastFullRefresh.Shows
+}
+
+func (s *Syncer) markFullRefresh(isMovie bool) {
+	now := time.Now().UTC()
+	if isMovie {
+		s.config.Sync.LastFullRefresh.Movies = now
+	} else {
+		s.config.Sync.LastFullRefresh.Shows = now
+	}
+	s.configDirty = true
 }
 
 // calculateDiff calculates which items to add and remove
@@ -237,12 +278,10 @@ func (s *Syncer) calculateDiff(current []trakt.ListItem, new []trakt.MediaIDs) (
 }
 
 // addItems adds items to a list
-func (s *Syncer) addItems(listSlug string, items []trakt.MediaIDs) error {
-	isMovieList := listSlug == "trending-movies" || listSlug == "popular-movies" || listSlug == "streaming-charts-movies"
-
+func (s *Syncer) addItems(listSlug string, items []trakt.MediaIDs, isMovie bool) error {
 	req := trakt.AddToListRequest{}
 
-	if isMovieList {
+	if isMovie {
 		for _, ids := range items {
 			req.Movies = append(req.Movies, trakt.AddMovie{IDs: ids})
 		}
@@ -256,12 +295,10 @@ func (s *Syncer) addItems(listSlug string, items []trakt.MediaIDs) error {
 }
 
 // removeItems removes items from a list
-func (s *Syncer) removeItems(listSlug string, items []trakt.MediaIDs) error {
-	isMovieList := listSlug == "trending-movies" || listSlug == "popular-movies" || listSlug == "streaming-charts-movies"
-
+func (s *Syncer) removeItems(listSlug string, items []trakt.MediaIDs, isMovie bool) error {
 	req := trakt.RemoveFromListRequest{}
 
-	if isMovieList {
+	if isMovie {
 		for _, ids := range items {
 			req.Movies = append(req.Movies, trakt.RemoveMovie{IDs: ids})
 		}
@@ -274,7 +311,60 @@ func (s *Syncer) removeItems(listSlug string, items []trakt.MediaIDs) error {
 	return s.client.RemoveItemsFromList(s.config.Trakt.Username, listSlug, req)
 }
 
+func listItemIDs(items []trakt.ListItem) []trakt.MediaIDs {
+	ids := make([]trakt.MediaIDs, 0, len(items))
+	for _, item := range items {
+		if item.Movie != nil {
+			ids = append(ids, item.Movie.IDs)
+		} else if item.Show != nil {
+			ids = append(ids, item.Show.IDs)
+		}
+	}
+	return ids
+}
+
+func uniqueIDs(items []trakt.MediaIDs) []trakt.MediaIDs {
+	seen := make(map[int]struct{}, len(items))
+	unique := make([]trakt.MediaIDs, 0, len(items))
+	for _, ids := range items {
+		if _, ok := seen[ids.Trakt]; ok {
+			continue
+		}
+		seen[ids.Trakt] = struct{}{}
+		unique = append(unique, ids)
+	}
+	return unique
+}
+
 // Fetch functions for different list types
+func (s *Syncer) fetchCombinedMovies(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
+	trending, err := s.fetchTrendingMovies(client, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	streaming, err := s.fetchStreamingMovies(client, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return uniqueIDs(append(trending, streaming...)), nil
+}
+
+func (s *Syncer) fetchCombinedShows(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
+	trending, err := s.fetchTrendingShows(client, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	streaming, err := s.fetchStreamingShows(client, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return uniqueIDs(append(trending, streaming...)), nil
+}
+
 func (s *Syncer) fetchTrendingMovies(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
 	movies, err := client.GetTrendingMovies(limit)
 	if err != nil {
@@ -297,32 +387,6 @@ func (s *Syncer) fetchTrendingShows(client *trakt.Client, limit int) ([]trakt.Me
 	var ids []trakt.MediaIDs
 	for _, s := range shows {
 		ids = append(ids, s.Show.IDs)
-	}
-	return ids, nil
-}
-
-func (s *Syncer) fetchPopularMovies(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
-	movies, err := client.GetPopularMovies(limit)
-	if err != nil {
-		return nil, err
-	}
-
-	var ids []trakt.MediaIDs
-	for _, m := range movies {
-		ids = append(ids, m.IDs)
-	}
-	return ids, nil
-}
-
-func (s *Syncer) fetchPopularShows(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
-	shows, err := client.GetPopularShows(limit)
-	if err != nil {
-		return nil, err
-	}
-
-	var ids []trakt.MediaIDs
-	for _, s := range shows {
-		ids = append(ids, s.IDs)
 	}
 	return ids, nil
 }
