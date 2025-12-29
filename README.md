@@ -37,7 +37,7 @@ The tool maintains these 6 lists on your Trakt.tv account:
 
 ```bash
 # Clone the repository
-git clone https://github.com/maximilian/trakt-sync.git
+git clone https://github.com/Sinthos/trakt-sync.git
 cd trakt-sync
 
 # Download dependencies

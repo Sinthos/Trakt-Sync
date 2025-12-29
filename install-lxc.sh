@@ -6,6 +6,7 @@ INSTALL_PREFIX="${INSTALL_PREFIX:-/usr/local}"
 SERVICE_PATH="${SERVICE_PATH:-/etc/systemd/system/trakt-sync.service}"
 TRAKT_SYNC_INTERVAL="${TRAKT_SYNC_INTERVAL:-6h}"
 SKIP_DEPS="${SKIP_DEPS:-0}"
+REPO_URL="${REPO_URL:-https://github.com/Sinthos/trakt-sync.git}"
 
 TRAKT_CLIENT_ID="${TRAKT_CLIENT_ID:-}"
 TRAKT_CLIENT_SECRET="${TRAKT_CLIENT_SECRET:-}"
@@ -15,6 +16,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${INSTALL_PREFIX}/bin"
 BIN_PATH="${BIN_DIR}/trakt-sync"
 HAS_SYSTEMD=0
+CLONE_DIR=""
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run as root."
@@ -32,6 +34,37 @@ if [ "$SKIP_DEPS" != "1" ]; then
   apt-get install -y ca-certificates git curl make golang-go
 fi
 
+ensure_repo() {
+  if [ -f "${REPO_DIR}/go.mod" ] && [ -f "${REPO_DIR}/config.example.yaml" ] && [ -f "${REPO_DIR}/cmd/trakt-sync/main.go" ]; then
+    return
+  fi
+
+  if command -v git >/dev/null 2>&1 && [ -d "${REPO_DIR}/.git" ]; then
+    git -C "${REPO_DIR}" fetch origin || true
+    git -C "${REPO_DIR}" checkout origin/main -- cmd || true
+  fi
+
+  if [ -f "${REPO_DIR}/go.mod" ] && [ -f "${REPO_DIR}/config.example.yaml" ] && [ -f "${REPO_DIR}/cmd/trakt-sync/main.go" ]; then
+    return
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git is required to fetch missing files; install git or re-clone the repository."
+    exit 1
+  fi
+
+  CLONE_DIR="$(mktemp -d /tmp/trakt-sync-XXXXXX)"
+  git clone "${REPO_URL}" "${CLONE_DIR}"
+  REPO_DIR="${CLONE_DIR}"
+
+  if [ ! -f "${REPO_DIR}/cmd/trakt-sync/main.go" ]; then
+    echo "cmd/trakt-sync/main.go not found after clone."
+    exit 1
+  fi
+}
+
+ensure_repo
+
 if ! id -u "$APP_USER" >/dev/null 2>&1; then
   if command -v adduser >/dev/null 2>&1; then
     adduser --system --home "/var/lib/${APP_USER}" --group --disabled-login "$APP_USER"
@@ -46,16 +79,6 @@ fi
 USER_HOME="$(getent passwd "$APP_USER" | cut -d: -f6)"
 if [ -z "$USER_HOME" ]; then
   USER_HOME="/var/lib/${APP_USER}"
-fi
-
-if [ ! -f "${REPO_DIR}/go.mod" ]; then
-  echo "go.mod not found in ${REPO_DIR}"
-  exit 1
-fi
-
-if [ ! -f "${REPO_DIR}/config.example.yaml" ]; then
-  echo "config.example.yaml not found in ${REPO_DIR}"
-  exit 1
 fi
 
 install -d "$BIN_DIR"
@@ -136,20 +159,22 @@ Binary: ${BIN_PATH}
 Service file: ${SERVICE_PATH}
 
 Next steps:
-1) Edit config and set trakt client_id/client_secret/username:
-   nano ${CONFIG_PATH}
-2) Authenticate:
+1) Authenticate:
    sudo -u ${APP_USER} ${BIN_PATH} auth
 EOF_OUTPUT
 
 if [ "$HAS_SYSTEMD" -eq 1 ]; then
   cat << EOF_OUTPUT
-3) Start service:
+2) Start service:
    systemctl enable --now trakt-sync
 EOF_OUTPUT
 else
   cat << EOF_OUTPUT
-3) systemd not detected; run manually:
+2) systemd not detected; run manually:
    sudo -u ${APP_USER} ${BIN_PATH} daemon --interval ${TRAKT_SYNC_INTERVAL}
 EOF_OUTPUT
+fi
+
+if [ -n "$CLONE_DIR" ] && [ -d "$CLONE_DIR" ]; then
+  rm -rf "$CLONE_DIR"
 fi
