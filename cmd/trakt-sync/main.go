@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/maximilian/trakt-sync/internal/config"
@@ -336,20 +339,38 @@ func runDaemon(interval time.Duration) error {
 
 	log.Info().Dur("interval", interval).Msg("Starting daemon mode")
 
+	// Set up graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		log.Info().Str("signal", sig.String()).Msg("Received shutdown signal, stopping gracefully...")
+		cancel()
+	}()
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	// Initial sync
 	if _, err := runSync(""); err != nil {
 		log.Error().Err(err).Msg("Initial sync failed")
 	}
 
-	for range ticker.C {
-		if _, err := runSync(""); err != nil {
-			log.Error().Err(err).Msg("Sync failed")
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Msg("Daemon stopped gracefully")
+			return nil
+		case <-ticker.C:
+			if _, err := runSync(""); err != nil {
+				log.Error().Err(err).Msg("Sync failed")
+			}
 		}
 	}
-
-	return nil
 }
 
 func runStatus() {
@@ -382,6 +403,7 @@ func runStatus() {
 	}
 
 	fmt.Printf("\nSync limit: %d items per source\n", cfg.Sync.Limit)
+	fmt.Printf("Min rating: %d%%\n", cfg.Sync.MinRating)
 	fmt.Printf("List privacy: %s\n", cfg.Sync.ListPrivacy)
 	fmt.Printf("Full refresh: every %d days\n", cfg.Sync.FullRefreshDays)
 }

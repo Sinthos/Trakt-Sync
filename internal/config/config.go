@@ -32,6 +32,7 @@ type TraktConfig struct {
 // SyncConfig defines sync behavior
 type SyncConfig struct {
 	Limit           int              `mapstructure:"limit"`
+	MinRating       int              `mapstructure:"min_rating"`
 	ListPrivacy     string           `mapstructure:"list_privacy"`
 	FullRefreshDays int              `mapstructure:"full_refresh_days"`
 	LastFullRefresh FullRefreshState `mapstructure:"last_full_refresh"`
@@ -136,6 +137,7 @@ func Save(cfg *Config, configPath string) error {
 	}
 
 	v.Set("sync.limit", cfg.Sync.Limit)
+	v.Set("sync.min_rating", cfg.Sync.MinRating)
 	v.Set("sync.list_privacy", privacy)
 	v.Set("sync.full_refresh_days", cfg.Sync.FullRefreshDays)
 	v.Set("sync.last_full_refresh.movies", formatTimeOrEmpty(cfg.Sync.LastFullRefresh.Movies))
@@ -186,7 +188,8 @@ func (c *Config) NeedsRefresh() bool {
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("sync.limit", 20)
+	v.SetDefault("sync.limit", 30)
+	v.SetDefault("sync.min_rating", 60)
 	v.SetDefault("sync.list_privacy", "private")
 	v.SetDefault("sync.full_refresh_days", 7)
 	v.SetDefault("sync.lists.movies", true)
@@ -204,7 +207,8 @@ func defaultConfig() *Config {
 	return &Config{
 		Trakt: TraktConfig{},
 		Sync: SyncConfig{
-			Limit:           20,
+			Limit:           30,
+			MinRating:       60,
 			ListPrivacy:     "private",
 			FullRefreshDays: 7,
 			Lists: ListSyncConfig{

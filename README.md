@@ -6,7 +6,9 @@ A Go-based tool to automatically synchronize Trakt.tv lists with trending and st
 
 - **OAuth2 Authentication** - Secure device code flow authentication with automatic token refresh
 - **2 Auto-Synced Lists** - Combines trending and streaming charts for movies and shows
+- **Rating Filter** - Only includes items with a minimum rating (default: 60%)
 - **Daemon Mode** - Run continuously with configurable sync intervals
+- **Graceful Shutdown** - Clean shutdown on SIGTERM/SIGINT signals
 - **Smart Diffing + Weekly Full Refresh** - Only adds/removes items that have changed; lists are fully refreshed weekly
 - **Rate Limiting** - Respects Trakt API limits with automatic backoff
 - **Cross-Platform** - Builds for Linux (AMD64, ARM64) and other platforms
@@ -18,8 +20,8 @@ The tool maintains these 2 lists on your Trakt.tv account:
 
 | List Slug | Description | Source APIs |
 |-----------|-------------|-------------|
-| `trakt-sync-filme` | Top 20 trending + Top 20 streaming charts movies | `/movies/trending`, `/movies/watched/weekly` |
-| `trakt-sync-serien` | Top 20 trending + Top 20 streaming charts shows | `/shows/trending`, `/shows/watched/weekly` |
+| `trakt-sync-filme` | Top 30 trending + Top 30 streaming charts movies (min. 60% rating) | `/movies/trending`, `/movies/watched/weekly` |
+| `trakt-sync-serien` | Top 30 trending + Top 30 streaming charts shows (min. 60% rating) | `/shows/trending`, `/shows/watched/weekly` |
 
 ## Installation
 
@@ -80,7 +82,8 @@ The binary will be in the `bin/` directory.
 
 See `config.example.yaml` for all available options:
 
-- **sync.limit** - Number of items per source (default: 20)
+- **sync.limit** - Number of items per source (default: 30)
+- **sync.min_rating** - Minimum rating filter 0-100 (default: 60, meaning 6.0/10)
 - **sync.list_privacy** - Privacy for auto-created lists (default: private)
 - **sync.full_refresh_days** - Full refresh cadence in days (default: 7)
 - **sync.lists** - Enable/disable movies/shows lists

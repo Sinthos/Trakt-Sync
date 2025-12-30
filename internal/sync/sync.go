@@ -366,7 +366,7 @@ func (s *Syncer) fetchCombinedShows(client *trakt.Client, limit int) ([]trakt.Me
 }
 
 func (s *Syncer) fetchTrendingMovies(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
-	movies, err := client.GetTrendingMovies(limit)
+	movies, err := client.GetTrendingMovies(limit, s.config.Sync.MinRating)
 	if err != nil {
 		return nil, err
 	}
@@ -379,20 +379,20 @@ func (s *Syncer) fetchTrendingMovies(client *trakt.Client, limit int) ([]trakt.M
 }
 
 func (s *Syncer) fetchTrendingShows(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
-	shows, err := client.GetTrendingShows(limit)
+	shows, err := client.GetTrendingShows(limit, s.config.Sync.MinRating)
 	if err != nil {
 		return nil, err
 	}
 
 	var ids []trakt.MediaIDs
-	for _, s := range shows {
-		ids = append(ids, s.Show.IDs)
+	for _, sh := range shows {
+		ids = append(ids, sh.Show.IDs)
 	}
 	return ids, nil
 }
 
 func (s *Syncer) fetchStreamingMovies(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
-	movies, err := client.GetMostWatchedMovies(limit)
+	movies, err := client.GetMostWatchedMovies(limit, s.config.Sync.MinRating)
 	if err != nil {
 		return nil, err
 	}
@@ -405,14 +405,14 @@ func (s *Syncer) fetchStreamingMovies(client *trakt.Client, limit int) ([]trakt.
 }
 
 func (s *Syncer) fetchStreamingShows(client *trakt.Client, limit int) ([]trakt.MediaIDs, error) {
-	shows, err := client.GetMostWatchedShows(limit)
+	shows, err := client.GetMostWatchedShows(limit, s.config.Sync.MinRating)
 	if err != nil {
 		return nil, err
 	}
 
 	var ids []trakt.MediaIDs
-	for _, s := range shows {
-		ids = append(ids, s.Show.IDs)
+	for _, sh := range shows {
+		ids = append(ids, sh.Show.IDs)
 	}
 	return ids, nil
 }
