@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  trakt-sync:
+    image: harbor.maxtempel.de/library/trakt-sync:latest
+    container_name: trakt-sync
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Berlin
+    volumes:
+      # Mount your config.yaml here (copy from config.example.yaml and configure)
+      - ./config.yaml:/app/config.yaml:ro
+    networks:
+      - trakt-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  trakt-network:
+    driver: bridge

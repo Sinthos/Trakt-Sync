@@ -41,7 +41,7 @@ type Client struct {
 // NewClient creates a new Trakt API client
 func NewClient(clientID, clientSecret, accessToken, refreshToken string) *Client {
 	return &Client{
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		httpClient:   &http.Client{Timeout: 60 * time.Second},
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		accessToken:  accessToken,
@@ -174,13 +174,11 @@ func (c *Client) waitForRateLimit() {
 	reset := c.rateLimitReset
 	c.rateLimitMu.Unlock()
 
-	if remaining == 0 && !reset.IsZero() {
-		now := time.Now()
-		if now.Before(reset) {
-			sleep := time.Until(reset)
-			log.Warn().Dur("delay", sleep).Msg("Rate limit reached, waiting for reset")
-			time.Sleep(sleep)
-		}
+	// Only wait if rate limit is exhausted AND reset time is valid and in the future
+	if remaining == 0 && !reset.IsZero() && time.Now().Before(reset) {
+		sleep := time.Until(reset)
+		log.Warn().Dur("delay", sleep).Msg("Rate limit reached, waiting for reset")
+		time.Sleep(sleep)
 	}
 }
 
@@ -259,7 +257,13 @@ func backoffDuration(attempt int) time.Duration {
 		return 0
 	}
 
-	delay := baseBackoff * time.Duration(1<<uint(attempt-1))
+	// Cap the shift to prevent integer overflow for large attempt values
+	shift := attempt - 1
+	if shift > 30 {
+		shift = 30
+	}
+
+	delay := baseBackoff * time.Duration(1<<uint(shift))
 	if delay > maxBackoff {
 		delay = maxBackoff
 	}

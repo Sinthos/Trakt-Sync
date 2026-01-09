@@ -209,29 +209,83 @@ sudo systemctl status trakt-sync
 
 ### Docker
 
-Create a `Dockerfile`:
+#### Option 1: Use Pre-built Image from Harbor
 
-```dockerfile
-FROM golang:1.21-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go mod download
-RUN go build -o trakt-sync ./cmd/trakt-sync
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/trakt-sync .
-COPY config.yaml /root/.config/trakt-sync/config.yaml
-CMD ["./trakt-sync", "daemon"]
-```
-
-Build and run:
+Pull and run the pre-built image:
 
 ```bash
-docker build -t trakt-sync .
-docker run -d --name trakt-sync -v ~/.config/trakt-sync:/root/.config/trakt-sync trakt-sync
+# Pull latest image
+docker pull harbor.maxtempel.de/library/trakt-sync:latest
+
+# Run container (mount your config.yaml)
+docker run -d --name trakt-sync \
+  -v $(pwd)/config.yaml:/app/config.yaml:ro \
+  harbor.maxtempel.de/library/trakt-sync:latest
 ```
+
+#### Option 2: Docker Compose (Recommended)
+
+1. Copy `config.example.yaml` to `config.yaml` and configure it
+2. Use the provided `docker-compose.yml`:
+
+```bash
+docker compose up -d
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
+#### Option 3: Build Your Own Image
+
+```bash
+# Build for current platform
+docker build -t trakt-sync .
+
+# Or build multi-platform for deployment to different architectures
+COMMIT_SHA=$(git rev-parse --short HEAD)
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --tag harbor.maxtempel.de/library/trakt-sync:latest \
+  --tag harbor.maxtempel.de/library/trakt-sync:main-${COMMIT_SHA} \
+  --push \
+  .
+```
+
+#### Harbor Registry Deployment
+
+For deployment to Harbor registry:
+
+1. **Build multi-platform image:**
+   ```bash
+   COMMIT_SHA=$(git rev-parse --short HEAD)
+   docker buildx build \
+     --platform linux/amd64,linux/arm64 \
+     --tag harbor.maxtempel.de/library/trakt-sync:latest \
+     --tag harbor.maxtempel.de/library/trakt-sync:main-${COMMIT_SHA} \
+     --push \
+     .
+   ```
+
+2. **Verify multi-platform manifest:**
+   ```bash
+   docker buildx imagetools inspect harbor.maxtempel.de/library/trakt-sync:latest
+   ```
+
+3. **Deploy via Portainer or Docker Compose:**
+   ```bash
+   docker compose pull
+   docker compose up -d
+   docker compose logs -f
+   ```
+
+4. **Check deployment:**
+   ```bash
+   docker ps | grep trakt-sync
+   docker logs trakt-sync
+   ```
 
 ## Development
 

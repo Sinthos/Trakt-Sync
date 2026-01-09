@@ -1,0 +1,40 @@
+# Version control
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Dependencies (will be downloaded in build)
+vendor/
+
+# Build artifacts
+bin/
+trakt-sync
+*.exe
+*.test
+
+# Documentation
+*.md
+docs/
+
+# Config files (except example)
+config.yaml
+.env
+.env.local
+
+# CI/CD
+.github/
+
+# Claude Code
+.claude/
+
+# Test coverage
+coverage.out
+*.coverprofile
+
+# OS files
+Thumbs.db

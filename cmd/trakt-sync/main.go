@@ -43,18 +43,20 @@ var rootCmd = &cobra.Command{
 	Short: "Sync Trakt.tv lists with trending and streaming charts",
 	Long:  "A tool to automatically synchronize Trakt.tv lists with top trending and most watched movies and shows.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		setupLogging()
-
 		if cmd.Name() == "version" {
+			setupLogging()
 			return
 		}
 
 		var err error
 		cfg, err = config.Load(cfgFile)
 		if err != nil {
+			// Setup basic logging first to show error
+			setupLogging()
 			log.Fatal().Err(err).Msg("Failed to load config")
 		}
 
+		// Setup logging with config-based settings
 		setupLogging()
 	},
 }
@@ -75,7 +77,10 @@ var syncCmd = &cobra.Command{
 	Short: "Sync lists once",
 	Long:  "Performs a one-time sync of all enabled lists.",
 	Run: func(cmd *cobra.Command, args []string) {
-		lists, _ := cmd.Flags().GetString("lists")
+		lists, err := cmd.Flags().GetString("lists")
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to parse lists flag")
+		}
 		result, err := runSync(lists)
 		if err != nil {
 			log.Error().Err(err).Msg("Sync failed")
@@ -325,7 +330,7 @@ func runSync(listsFilter string) (syncpkg.SyncResult, error) {
 		}
 
 		if saveErr := config.Save(cfg, configPath); saveErr != nil {
-			log.Error().Err(saveErr).Msg("Failed to save sync state")
+			log.Warn().Err(saveErr).Msg("Failed to save sync state (next sync may trigger full refresh)")
 		}
 	}
 
@@ -416,6 +421,14 @@ func runInstallService(path, user string, interval time.Duration) error {
 		return fmt.Errorf("service path must not be empty")
 	}
 
+	// Validate path to prevent directory traversal
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("service path must be absolute")
+	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("service path must not contain '..'")
+	}
+
 	serviceFile := fmt.Sprintf(`[Unit]
 Description=Trakt List Sync Service
 After=network-online.target
@@ -445,11 +458,14 @@ WantedBy=multi-user.target
 }
 
 func syncExitCode(result syncpkg.SyncResult, err error) int {
+	// Exit code 2: all lists failed or critical error
+	// Exit code 1: partial failure (some lists synced)
+	// Exit code 0: success
 	if err != nil {
 		if errors.Is(err, syncpkg.ErrAllFailed) {
-			return 2
+			return 2 // All lists failed
 		}
-		return 2
+		return 3 // Other errors (e.g., config/auth errors)
 	}
 
 	if result.Total == 0 {
@@ -458,9 +474,9 @@ func syncExitCode(result syncpkg.SyncResult, err error) int {
 
 	if result.Failed > 0 {
 		if result.Successful == 0 {
-			return 2
+			return 2 // All lists failed
 		}
-		return 1
+		return 1 // Partial failure
 	}
 
 	return 0
