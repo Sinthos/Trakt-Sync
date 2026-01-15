@@ -13,12 +13,12 @@ trakt:
 
 sync:
   # Number of items per source (trending + streaming charts)
-  limit: 30
+  limit: 20
 
   # Minimum rating filter (0-100, where 60 = 6.0/10)
   # Only items with this rating or higher will be included
   # Set to 0 to disable filtering
-  min_rating: 60
+  min_rating: 75
 
   # List privacy: private, friends, public
   list_privacy: "private"

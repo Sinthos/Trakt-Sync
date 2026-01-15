@@ -58,6 +58,7 @@ var rootCmd = &cobra.Command{
 
 		// Setup logging with config-based settings
 		setupLogging()
+		logConfigSummary()
 	},
 }
 
@@ -208,6 +209,29 @@ func setupLogging() {
 	if format == "json" {
 		log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
 	}
+}
+
+func logConfigSummary() {
+	if cfg == nil {
+		return
+	}
+
+	configPath := cfgFile
+	if configPath == "" {
+		configPath = config.DefaultConfigPath()
+	}
+
+	log.Info().
+		Str("config_file", configPath).
+		Int("limit", cfg.Sync.Limit).
+		Int("min_rating", cfg.Sync.MinRating).
+		Str("list_privacy", cfg.Sync.ListPrivacy).
+		Int("full_refresh_days", cfg.Sync.FullRefreshDays).
+		Bool("movies", cfg.Sync.Lists.Movies).
+		Bool("shows", cfg.Sync.Lists.Shows).
+		Str("log_level", cfg.Logging.Level).
+		Str("log_format", cfg.Logging.Format).
+		Msg("Loaded configuration")
 }
 
 func runAuth() error {
